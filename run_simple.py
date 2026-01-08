@@ -252,6 +252,68 @@ def train_ensemble(X, y):
     return voting_clf, scaler, le, results
 
 
+def save_results(beats, labels, features, model, scaler, le, results, preprocess_info):
+    """保存所有结果"""
+    import joblib
+    import json
+    
+    # 创建输出目录
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    logger.info("\n保存结果...")
+    
+    # 1. 保存模型
+    model_path = os.path.join(output_dir, f"model_{timestamp}.joblib")
+    joblib.dump({
+        'model': model,
+        'scaler': scaler,
+        'label_encoder': le
+    }, model_path)
+    logger.info(f"  模型已保存: {model_path}")
+    
+    # 2. 保存心拍数据
+    beats_path = os.path.join(output_dir, f"beats_{timestamp}.npz")
+    np.savez_compressed(beats_path, beats=beats, labels=labels, features=features)
+    logger.info(f"  心拍数据已保存: {beats_path}")
+    
+    # 3. 保存评估结果
+    eval_results = {
+        'timestamp': timestamp,
+        'accuracy': float(results['accuracy']),
+        'labels': results['labels'].tolist(),
+        'confusion_matrix': results['confusion_matrix'].tolist(),
+        'cv_results': {k: {'mean': float(v['mean']), 'std': float(v['std'])} 
+                       for k, v in results['cv_results'].items()},
+        'classification_report': results['classification_report'],
+        'preprocess_info': preprocess_info,
+        'total_beats': len(beats),
+        'num_subjects': len(np.unique(labels))
+    }
+    
+    results_path = os.path.join(output_dir, f"results_{timestamp}.json")
+    with open(results_path, 'w', encoding='utf-8') as f:
+        json.dump(eval_results, f, indent=2, ensure_ascii=False)
+    logger.info(f"  评估结果已保存: {results_path}")
+    
+    # 4. 保存最新结果的软链接/复制
+    latest_model = os.path.join(output_dir, "model_latest.joblib")
+    latest_results = os.path.join(output_dir, "results_latest.json")
+    latest_beats = os.path.join(output_dir, "beats_latest.npz")
+    
+    # 复制为latest版本
+    import shutil
+    shutil.copy(model_path, latest_model)
+    shutil.copy(results_path, latest_results)
+    shutil.copy(beats_path, latest_beats)
+    
+    logger.info(f"\n📁 所有文件已保存到 {output_dir}/ 目录")
+    
+    return output_dir
+
+
 def main():
     """主函数"""
     logger.info("=" * 60)
@@ -263,20 +325,33 @@ def main():
     # 1. 加载和预处理
     beats, labels = load_and_preprocess()
     
+    # 收集预处理信息
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    preprocess_info = {
+        'subjects': {str(label): int(count) for label, count in zip(unique_labels, counts)},
+        'sampling_rate': 250.0,
+        'beat_length': beats.shape[1] if len(beats) > 0 else 0
+    }
+    
     # 2. 特征提取
     features = extract_simple_features(beats)
     logger.info(f"特征维度: {features.shape}")
     
     # 3. 训练模型
-    model, scaler, le, accuracy = train_ensemble(features, labels)
+    model, scaler, le, results = train_ensemble(features, labels)
     
     # 4. 保存结果
+    output_dir = save_results(beats, labels, features, model, scaler, le, results, preprocess_info)
+    
+    # 5. 打印最终结果
+    accuracy = results['accuracy']
     logger.info("\n" + "=" * 60)
     logger.info("最终结果")
     logger.info("=" * 60)
     logger.info(f"✅ 准确率: {accuracy:.4f} ({accuracy*100:.2f}%)")
     logger.info(f"✅ 被试数量: {len(np.unique(labels))}")
     logger.info(f"✅ 总心拍数: {len(beats)}")
+    logger.info(f"✅ 结果目录: {output_dir}/")
     
     return accuracy
 
