@@ -27,6 +27,7 @@ logger.add(
     format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{message}</cyan>",
     level="INFO"
 )
+os.makedirs("logs", exist_ok=True)
 logger.add(
     "logs/ecg_id_{time:YYYY-MM-DD}.log",
     rotation="1 day",
@@ -107,6 +108,8 @@ def load_and_preprocess_data(data_dir: str = "ECG_Data"):
             logger.error(f"  处理 {subject_id} 失败: {e}")
     
     # 合并所有心拍
+    if not all_beats:
+        raise ValueError("未找到可用心拍数据，请检查数据目录或预处理配置。")
     all_beats = np.vstack(all_beats)
     all_labels = np.array(all_labels)
     
@@ -270,6 +273,7 @@ def train_hybrid_model(beats, labels, handcrafted_features):
     results = classifier.evaluate(handcrafted_features, labels, beats=None)
     
     # 保存模型
+    os.makedirs("models_saved", exist_ok=True)
     classifier.save('models_saved/hybrid_classifier.pkl')
     
     return classifier, results
