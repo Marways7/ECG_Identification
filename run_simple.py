@@ -87,6 +87,8 @@ def load_and_preprocess():
         except Exception as e:
             logger.error(f"  处理 {subject_id} 失败: {e}")
     
+    if not all_beats:
+        raise ValueError("未找到可用心拍数据，请检查数据目录或预处理配置。")
     all_beats = np.vstack(all_beats)
     all_labels = np.array(all_labels)
     
